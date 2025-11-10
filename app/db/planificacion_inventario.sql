@@ -1,6 +1,6 @@
 	-- Updated Database Schema with Consistent Role ID References
 
-	CREATE SCHEMA planificacion_inventario;
+	CREATE SCHEMA IF NOT EXISTS planificacion_inventario;
 
 	USE planificacion_inventario;
 
