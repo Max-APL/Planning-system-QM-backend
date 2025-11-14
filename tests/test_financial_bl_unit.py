@@ -350,6 +350,283 @@ class TestFinancialBLUnit(unittest.TestCase):
         # 100.0 * 2 + 50.0 * 3 = 200.0 + 150.0 = 350.0
         self.assertEqual(result['spending_over_time'][0]['amount'], 350.0)
 
+
+
+    # ============================================================
+    # PRUEBAS PARA get_material_spending
+    # ============================================================
+
+    def test_get_material_spending_success_multiple_materials(self):
+        """
+        Prueba unitaria: Calcula gastos por material con mUltiples materiales
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 1
+        mock_project = MagicMock()
+        mock_project.ID = 1
+        mock_project.NOMBRE = "Proyecto Test"
+
+        mock_allocation1 = MagicMock()
+        mock_allocation1.FLUJO_MATERIAL_ID = 10
+        mock_allocation1.CANTIDAD = 3
+
+        mock_allocation2 = MagicMock()
+        mock_allocation2.FLUJO_MATERIAL_ID = 11
+        mock_allocation2.CANTIDAD = 2
+
+        mock_flow1 = MagicMock()
+        mock_flow1.MATERIAL_ID = 100
+
+        mock_flow2 = MagicMock()
+        mock_flow2.MATERIAL_ID = 101
+
+        mock_material1 = MagicMock()
+        mock_material1.NOMBRE = "Cemento"
+        mock_material1.PRECIO_UNITARIO = 100.0
+
+        mock_material2 = MagicMock()
+        mock_material2.NOMBRE = "Arena"
+        mock_material2.PRECIO_UNITARIO = 50.0
+
+        # 2. LÓGICA DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=mock_project), \
+             patch('app.business_logic.financial_bl.get_material_allocations_by_project', return_value=[mock_allocation1, mock_allocation2]), \
+             patch('app.business_logic.financial_bl.get_flow_material_by_id', side_effect=[mock_flow1, mock_flow2]), \
+             patch('app.business_logic.financial_bl.get_material_by_id', side_effect=[mock_material1, mock_material2]):
+            
+            result = FinancialBL.get_material_spending(project_id)
+
+        # 3. VALIDACIÓN Y ACEPTACIÓN DE LA PRUEBA
+        self.assertEqual(result['project_id'], 1)
+        self.assertEqual(len(result['expenses']), 2)
+        self.assertEqual(result['total_expense'], 400.0)  # 100.0*3 + 50.0*2
+        # Verificar que los materiales están ordenados
+        categories = [exp['category'] for exp in result['expenses']]
+        self.assertIn('Cemento', categories)
+        self.assertIn('Arena', categories)
+
+    def test_get_material_spending_project_not_found(self):
+        """
+        Prueba unitaria: Lanza excepcion cuando el proyecto no existe
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 999
+
+        # 2. LÓGICA DE LA PRUEBA y 3. VALIDACIÓN Y ACEPTACIÓN DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=None):
+            with self.assertRaises(ValueError) as context:
+                FinancialBL.get_material_spending(project_id)
+            
+            self.assertIn("not found", str(context.exception).lower())
+
+    def test_get_material_spending_same_material_aggregation(self):
+        """
+        Prueba unitaria: Agrega correctamente gastos del mismo material
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 1
+        mock_project = MagicMock()
+        mock_project.ID = 1
+        mock_project.NOMBRE = "Proyecto Test"
+
+        mock_allocation1 = MagicMock()
+        mock_allocation1.FLUJO_MATERIAL_ID = 10
+        mock_allocation1.CANTIDAD = 2
+
+        mock_allocation2 = MagicMock()
+        mock_allocation2.FLUJO_MATERIAL_ID = 11
+        mock_allocation2.CANTIDAD = 3
+
+        mock_flow1 = MagicMock()
+        mock_flow1.MATERIAL_ID = 100
+
+        mock_flow2 = MagicMock()
+        mock_flow2.MATERIAL_ID = 100  # Mismo material
+
+        mock_material = MagicMock()
+        mock_material.NOMBRE = "Cemento"
+        mock_material.PRECIO_UNITARIO = 100.0
+
+        # 2. LOGICA DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=mock_project), \
+             patch('app.business_logic.financial_bl.get_material_allocations_by_project', return_value=[mock_allocation1, mock_allocation2]), \
+             patch('app.business_logic.financial_bl.get_flow_material_by_id', side_effect=[mock_flow1, mock_flow2]), \
+             patch('app.business_logic.financial_bl.get_material_by_id', return_value=mock_material):
+            
+            result = FinancialBL.get_material_spending(project_id)
+
+        # 3. VALIDACION Y ACEPTACION DE LA PRUEBA
+        # Debe haber solo un material con la suma de ambos gastos
+        self.assertEqual(len(result['expenses']), 1)
+        self.assertEqual(result['expenses'][0]['category'], 'Cemento')
+        # 100.0 * 2 + 100.0 * 3 = 500.0
+        self.assertEqual(result['expenses'][0]['total_spent'], 500.0)
+        self.assertEqual(result['total_expense'], 500.0)
+
+    # ============================================================
+    # PRUEBAS PARA get_tool_spending
+    # ============================================================
+
+    def test_get_tool_spending_success_multiple_tools(self):
+        """
+        Prueba unitaria: Calcula gastos por herramienta con multiples herramientas
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 1
+        mock_project = MagicMock()
+        mock_project.ID = 1
+        mock_project.NOMBRE = "Proyecto Test"
+
+        mock_allocation1 = MagicMock()
+        mock_allocation1.FLUJO_HERRAMIENTA_ID = 20
+        mock_allocation1.CANTIDAD = 2
+
+        mock_allocation2 = MagicMock()
+        mock_allocation2.FLUJO_HERRAMIENTA_ID = 21
+        mock_allocation2.CANTIDAD = 1
+
+        mock_flow1 = MagicMock()
+        mock_flow1.HERRAMIENTA_ID = 200
+
+        mock_flow2 = MagicMock()
+        mock_flow2.HERRAMIENTA_ID = 201
+
+        mock_tool1 = MagicMock()
+        mock_tool1.NOMBRE = "Taladro"
+        mock_tool1.PRECIO_UNITARIO = 200.0
+
+        mock_tool2 = MagicMock()
+        mock_tool2.NOMBRE = "Martillo"
+        mock_tool2.PRECIO_UNITARIO = 50.0
+
+        # 2. LOGICA DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=mock_project), \
+             patch('app.business_logic.financial_bl.get_tool_allocations_by_project', return_value=[mock_allocation1, mock_allocation2]), \
+             patch('app.business_logic.financial_bl.get_flow_tool_by_id', side_effect=[mock_flow1, mock_flow2]), \
+             patch('app.business_logic.financial_bl.get_tool_by_id', side_effect=[mock_tool1, mock_tool2]):
+            
+            result = FinancialBL.get_tool_spending(project_id)
+
+        # 3. VALIDACION Y ACEPTACION DE LA PRUEBA
+        self.assertEqual(result['project_id'], 1)
+        self.assertEqual(len(result['expenses']), 2)
+        self.assertEqual(result['total_expense'], 450.0)  # 200.0*2 + 50.0*1
+        categories = [exp['category'] for exp in result['expenses']]
+        self.assertIn('Taladro', categories)
+        self.assertIn('Martillo', categories)
+
+    def test_get_tool_spending_project_not_found(self):
+        """
+        Prueba unitaria: Lanza excepción cuando el proyecto no existe
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 999
+
+        # 2. LOGICA DE LA PRUEBA y 3. VALIDACION Y ACEPTACION DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=None):
+            with self.assertRaises(ValueError) as context:
+                FinancialBL.get_tool_spending(project_id)
+            
+            self.assertIn("not found", str(context.exception).lower())
+
+    def test_get_tool_spending_empty_allocations(self):
+        """
+        Prueba unitaria: Maneja correctamente cuando no hay asignaciones de herramientas
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 1
+        mock_project = MagicMock()
+        mock_project.ID = 1
+        mock_project.NOMBRE = "Proyecto Sin Herramientas"
+
+        # 2. LOGICA DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=mock_project), \
+             patch('app.business_logic.financial_bl.get_tool_allocations_by_project', return_value=[]):
+            
+            result = FinancialBL.get_tool_spending(project_id)
+
+        # 3. VALIDACION Y ACEPTACION DE LA PRUEBA
+        self.assertEqual(result['project_id'], 1)
+        self.assertEqual(len(result['expenses']), 0)
+        self.assertEqual(result['total_expense'], 0)
+
+    def test_get_tool_spending_tool_not_found(self):
+        """
+        Prueba unitaria: Maneja correctamente cuando una herramienta no se encuentra
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 1
+        mock_project = MagicMock()
+        mock_project.ID = 1
+        mock_project.NOMBRE = "Proyecto Test"
+
+        mock_allocation = MagicMock()
+        mock_allocation.FLUJO_HERRAMIENTA_ID = 20
+        mock_allocation.CANTIDAD = 2
+
+        mock_flow = MagicMock()
+        mock_flow.HERRAMIENTA_ID = 200
+
+        # 2. LOGICA DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=mock_project), \
+             patch('app.business_logic.financial_bl.get_tool_allocations_by_project', return_value=[mock_allocation]), \
+             patch('app.business_logic.financial_bl.get_flow_tool_by_id', return_value=mock_flow), \
+             patch('app.business_logic.financial_bl.get_tool_by_id', return_value=None):
+            
+            result = FinancialBL.get_tool_spending(project_id)
+
+        # 3. VALIDACION Y ACEPTACION DE LA PRUEBA
+        # Si la herramienta no existe, no se suma al gasto
+        self.assertEqual(len(result['expenses']), 0)
+        self.assertEqual(result['total_expense'], 0)
+
+    def test_get_tool_spending_same_tool_aggregation(self):
+        """
+        Prueba unitaria: Agrega correctamente gastos de la misma herramienta
+        """
+        # 1. PREPARACION DE LA PRUEBA
+        project_id = 1
+        mock_project = MagicMock()
+        mock_project.ID = 1
+        mock_project.NOMBRE = "Proyecto Test"
+
+        mock_allocation1 = MagicMock()
+        mock_allocation1.FLUJO_HERRAMIENTA_ID = 20
+        mock_allocation1.CANTIDAD = 2
+
+        mock_allocation2 = MagicMock()
+        mock_allocation2.FLUJO_HERRAMIENTA_ID = 21
+        mock_allocation2.CANTIDAD = 3
+
+        mock_flow1 = MagicMock()
+        mock_flow1.HERRAMIENTA_ID = 200
+
+        mock_flow2 = MagicMock()
+        mock_flow2.HERRAMIENTA_ID = 200  # Misma herramienta
+
+        mock_tool = MagicMock()
+        mock_tool.NOMBRE = "Taladro"
+        mock_tool.PRECIO_UNITARIO = 150.0
+
+        # 2. LOGICA DE LA PRUEBA
+        with patch('app.business_logic.financial_bl.get_project_by_id', return_value=mock_project), \
+             patch('app.business_logic.financial_bl.get_tool_allocations_by_project', return_value=[mock_allocation1, mock_allocation2]), \
+             patch('app.business_logic.financial_bl.get_flow_tool_by_id', side_effect=[mock_flow1, mock_flow2]), \
+             patch('app.business_logic.financial_bl.get_tool_by_id', return_value=mock_tool):
+            
+            result = FinancialBL.get_tool_spending(project_id)
+
+        # 3. VALIDACION Y ACEPTACION DE LA PRUEBA
+        # Debe haber solo una herramienta con la suma de ambos gastos
+        self.assertEqual(len(result['expenses']), 1)
+        self.assertEqual(result['expenses'][0]['category'], 'Taladro')
+        # 150.0 * 2 + 150.0 * 3 = 750.0
+        self.assertEqual(result['expenses'][0]['total_spent'], 750.0)
+        self.assertEqual(result['total_expense'], 750.0)
+
+
+
+
 if __name__ == '__main__':
     unittest.main()
 
