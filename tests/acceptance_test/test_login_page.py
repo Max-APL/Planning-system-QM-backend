@@ -16,9 +16,11 @@ def driver():
        - Entregarla al test
        - Cerrar el navegador al final
     """
-    # Opcional: configurar opciones de Chrome
+    # Configurar opciones de Chrome
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
+    # Habilitar logging para capturar errores de consola
+    options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
 
     # Instalar y usar automáticamente el chromedriver
     service = Service(ChromeDriverManager().install())
@@ -41,7 +43,8 @@ def test_login_page_aceptacion(driver):
     driver.get(login_url)
 
     # Espera a que la página cargue completamente
-    time.sleep(3)
+    wait = WebDriverWait(driver, 10)
+    wait.until(EC.presence_of_element_located((By.ID, "username")))
 
     # ============= 2. LÓGICA DE LA PRUEBA ==================
     # Buscar el campo de username por id="username"
@@ -60,23 +63,90 @@ def test_login_page_aceptacion(driver):
     password_field.clear()
     password_field.send_keys("1234")
 
+    # Capturar errores de consola antes del login
+    try:
+        logs_before = driver.get_log('browser')
+    except:
+        logs_before = []
+    
     # Hacer clic en el botón de submit
     submit_button.click()
 
-    # Esperar a que se procese el login (puede redirigir o mostrar mensaje)
-    time.sleep(3)
+    # Esperar a que se procese el login - esperar hasta que el token esté en localStorage o haya un error
+    max_wait_time = 10
+    wait_interval = 0.5
+    elapsed_time = 0
+    token = None
+    alert_detected = False
+    alert_text = None
+    
+    while elapsed_time < max_wait_time:
+        time.sleep(wait_interval)
+        elapsed_time += wait_interval
+        
+        # Verificar si el token se guardó
+        token = driver.execute_script("return localStorage.getItem('token');")
+        if token:
+            break
+        
+        # Verificar si hay un alert visible (error)
+        try:
+            alert = driver.switch_to.alert
+            alert_text = alert.text
+            alert.accept()
+            alert_detected = True
+            print(f"Alert detectado: {alert_text}")
+            break
+        except:
+            pass  # No hay alert visible
+    
+    # Capturar errores de consola después del login
+    try:
+        logs_after = driver.get_log('browser')
+        all_logs = logs_after[len(logs_before):] if len(logs_after) > len(logs_before) else logs_after
+        
+        # Imprimir errores de consola si los hay
+        if all_logs:
+            print("\n=== Errores de consola ===")
+            for log in all_logs:
+                if log['level'] in ['SEVERE', 'WARNING']:
+                    print(f"{log['level']}: {log['message']}")
+    except:
+        all_logs = []
 
     # ============= 3. VALIDACIÓN / ACEPTACIÓN ==============
     # Verificar que el login fue exitoso
-    # Opción 1: Verificar que se redirigió al dashboard (URL cambió)
     current_url = driver.current_url
-    print(f"URL actual después del login: {current_url}")
-    
-    # Verificar que el token se guardó en localStorage
-    token = driver.execute_script("return localStorage.getItem('token');")
+    print(f"\nURL actual después del login: {current_url}")
     print(f"Token guardado: {token is not None}")
+    if token:
+        print(f"Token (primeros 20 caracteres): {token[:20]}...")
+    
+    # Si se detectó un alert, el login falló
+    if alert_detected:
+        error_msg = f"El login falló. Alert detectado: {alert_text}"
+        try:
+            severe_errors = [log['message'] for log in all_logs if log['level'] == 'SEVERE']
+            if severe_errors:
+                error_msg += f". Errores de consola: {severe_errors}"
+        except:
+            pass
+        assert False, error_msg
     
     # Validaciones principales
-    assert token is not None, "El token no se guardó en localStorage después del login"
+    assert token is not None, f"El token no se guardó en localStorage después del login. URL actual: {current_url}. Verifique que el backend esté corriendo en http://localhost:8000 y que las credenciales sean correctas."
     assert "dashboard" in current_url.lower() or token is not None, "El login no fue exitoso o no se redirigió correctamente"
+    
+    # Esperar a que el dashboard cargue completamente
+    print("\nEsperando a que el dashboard cargue completamente...")
+    try:
+        # Esperar hasta 5 segundos a que la página del dashboard esté completamente cargada
+        wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
+        # Esperar un momento adicional para que los componentes del dashboard se rendericen
+        time.sleep(2)
+        print("Dashboard cargado exitosamente.")
+    except Exception as e:
+        print(f"Nota: No se pudo verificar completamente la carga del dashboard: {e}")
+        # Aún así esperar un momento para que el dashboard se renderice
+        time.sleep(2)
 
