@@ -9,88 +9,32 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from tests.utils.auth_helpers import login
 
-
 def find_chromium_binary():
     """Busca el ejecutable de Chromium en ubicaciones comunes de Windows"""
-    # Obtener variables de entorno para hacer la función más general
-    username = os.getenv('USERNAME', '')
-    userprofile = os.getenv('USERPROFILE', '')
-    local_appdata = os.getenv('LOCALAPPDATA', '')
-    program_files = os.getenv('ProgramFiles', r'C:\Program Files')
-    program_files_x86 = os.getenv('ProgramFiles(x86)', r'C:\Program Files (x86)')
-    
-    # Lista de rutas posibles usando variables de entorno
     possible_paths = [
-        # Ubicación más común en AppData\Local
-        os.path.join(local_appdata, r"Chromium\Application\chrome.exe") if local_appdata else None,
-        os.path.join(userprofile, r"AppData\Local\Chromium\Application\chrome.exe") if userprofile else None,
-        r"C:\Users\{}\AppData\Local\Chromium\Application\chrome.exe".format(username) if username else None,
-        # Ubicaciones en Program Files
-        os.path.join(program_files, r"Chromium\Application\chrome.exe") if program_files else None,
-        os.path.join(program_files_x86, r"Chromium\Application\chrome.exe") if program_files_x86 else None,
-        # Rutas absolutas por si las variables no funcionan
         r"C:\Program Files\Chromium\Application\chrome.exe",
         r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
+        r"C:\Users\{}\AppData\Local\Chromium\Application\chrome.exe".format(os.getenv('USERNAME', '')),
     ]
-    
-    # Eliminar None de la lista
-    possible_paths = [path for path in possible_paths if path is not None]
-    
-    # Buscar en rutas directas
     for path in possible_paths:
         if os.path.exists(path):
-            print(f"✓ Chromium encontrado en: {path}")
             return path
-    
-    # Buscar recursivamente en AppData\Local (más común)
-    search_paths = []
-    if local_appdata:
-        search_paths.append(local_appdata)
-    if userprofile:
-        search_paths.append(os.path.join(userprofile, "AppData", "Local"))
-    
-    for base_path in search_paths:
+    for base_path in [r"C:\Program Files", r"C:\Program Files (x86)"]:
         if os.path.exists(base_path):
-            try:
-                for root, dirs, files in os.walk(base_path):
-                    if "chromium" in root.lower() and "chrome.exe" in files:
-                        chromium_path = os.path.join(root, "chrome.exe")
-                        if os.path.exists(chromium_path):
-                            print(f"✓ Chromium encontrado en: {chromium_path}")
-                            return chromium_path
-            except (PermissionError, OSError):
-                continue
-    
-    # Buscar recursivamente en Program Files
-    for base_path in [program_files, program_files_x86, r"C:\Program Files", r"C:\Program Files (x86)"]:
-        if base_path and os.path.exists(base_path):
-            try:
-                for root, dirs, files in os.walk(base_path):
-                    if "chromium" in root.lower() and "chrome.exe" in files:
-                        chromium_path = os.path.join(root, "chrome.exe")
-                        if os.path.exists(chromium_path):
-                            print(f"✓ Chromium encontrado en: {chromium_path}")
-                            return chromium_path
-            except (PermissionError, OSError):
-                continue
-    
-    print("⚠ Chromium no encontrado. Se usará Chrome por defecto si está disponible.")
+            for root, dirs, files in os.walk(base_path):
+                if "chrome.exe" in files and "Chromium" in root:
+                    return os.path.join(root, "chrome.exe")
     return None
-
 
 @pytest.fixture
 def driver():
     """Fixture para crear y configurar el WebDriver"""
     options = webdriver.ChromeOptions()
     options.add_argument("--start-maximized")
-    
-    # Intentar usar Chromium si está disponible
     chromium_path = find_chromium_binary()
     if chromium_path:
         options.binary_location = chromium_path
         print("✓ Usando Chromium")
-    
-    # Preferencias básicas
     prefs = {
         "credentials_enable_service": False,
         "profile.password_manager_enabled": False,
@@ -100,8 +44,6 @@ def driver():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-notifications")
-
-    # Configurar chromedriver
     try:
         driver_path = ChromeDriverManager().install()
         if not driver_path.endswith('.exe'):
@@ -117,7 +59,6 @@ def driver():
                         if os.path.getsize(potential_path) > 1000:
                             driver_path = potential_path
                             break
-        
         if os.path.exists(driver_path) and os.path.getsize(driver_path) > 1000:
             service = Service(driver_path)
             driver = webdriver.Chrome(service=service, options=options)
@@ -126,26 +67,23 @@ def driver():
     except Exception as e:
         print(f"⚠ Error al configurar chromedriver: {e}")
         driver = webdriver.Chrome(options=options)
-
     yield driver
     driver.quit()
 
-
-def test_lista_proveedores_carga_correctamente(driver):
+def test_lista_herramientas_carga_correctamente(driver):
     """
-    Prueba de aceptación: Verificar que la lista de proveedores se cargue correctamente
+    Prueba de aceptación: Verificar que la lista de herramientas se cargue correctamente y se pueda buscar por nombre
     """
     # ============= 1. PREPARACIÓN DE LA PRUEBA =============
     login_url = "http://localhost:8080"
     login_result = login(driver, "AnaMartinez", "1234", login_url)
-    
     assert login_result['token'] is not None, f"El login no fue exitoso. URL actual: {login_result['current_url']}"
     print(f"✓ Login exitoso")
     time.sleep(2)
 
     # ============= 2. LÓGICA DE LA PRUEBA ==================
     wait = WebDriverWait(driver, 15)
-    
+
     # Abrir sidebar
     try:
         sidebar_button = wait.until(
@@ -160,38 +98,23 @@ def test_lista_proveedores_carga_correctamente(driver):
         sidebar_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".hamburger-btn, button")))
         sidebar_button.click()
         time.sleep(2)
-    
-    # Cerrar cualquier popup si existe
-    try:
-        driver.execute_script("""
-            var popups = document.querySelectorAll('[role="dialog"], .modal');
-            popups.forEach(function(popup) {
-                if (popup.offsetParent !== null) {
-                    popup.style.display = 'none';
-                }
-            });
-        """)
-        time.sleep(0.5)
-    except:
-        pass
-    
-    # Buscar y hacer clic en el enlace de Proveedores
-    providers_link = None
+
+    # Buscar y hacer clic en el enlace de Herramientas
+    tools_link = None
     for attempt in range(5):
         try:
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".sidebar ul, ul li a")))
             time.sleep(1)
-            providers_link = wait.until(
-                EC.presence_of_element_located((By.XPATH, '//*[@id="app"]/div/div[1]/div[1]/ul/li[8]/a'))
+            tools_link = wait.until(
+                EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'Herramientas')]"))
             )
-            if providers_link.is_displayed():
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", providers_link)
+            if tools_link.is_displayed():
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", tools_link)
                 time.sleep(1)
                 break
         except Exception as e:
             if attempt < 4:
                 time.sleep(2)
-                # Reabrir sidebar si se cerró
                 try:
                     sidebar = driver.find_element(By.CSS_SELECTOR, ".sidebar")
                     if "sidebar-open" not in sidebar.get_attribute("class"):
@@ -201,58 +124,56 @@ def test_lista_proveedores_carga_correctamente(driver):
                 except:
                     pass
             else:
-                # Buscar por texto como último recurso
                 try:
-                    providers_link = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Proveedores')]"))
+                    tools_link = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Herramientas')]"))
                     )
                     break
                 except:
                     pass
-    
+
     # Hacer clic en el enlace
-    if providers_link:
+    if tools_link:
         try:
-            providers_link.click()
-            print("✓ Enlace de Proveedores presionado")
+            tools_link.click()
+            print("✓ Enlace de Herramientas presionado")
         except:
-            driver.execute_script("arguments[0].click();", providers_link)
-            print("✓ Enlace de Proveedores presionado (JavaScript)")
+            driver.execute_script("arguments[0].click();", tools_link)
+            print("✓ Enlace de Herramientas presionado (JavaScript)")
     else:
-        # Navegación directa como último recurso
-        driver.get("http://localhost:8080/providers")
-        print("✓ Navegación directa a /providers")
-    
+        driver.get("http://localhost:8080/tools")
+        print("✓ Navegación directa a /tools")
+
     time.sleep(3)
     current_url = driver.current_url
-    assert "providers" in current_url.lower(), f"No se redirigió a la página de proveedores. URL: {current_url}"
+    assert "tools" in current_url.lower(), f"No se redirigió a la página de herramientas. URL: {current_url}"
     print(f"✓ Redirección exitosa a: {current_url}")
 
     # ============= 3. VALIDACIÓN / ACEPTACIÓN ==============
-    # Buscar contenedor de proveedores
+    # Buscar contenedor de herramientas
     try:
-        providers_container = wait.until(
+        tools_container = wait.until(
             EC.presence_of_element_located((By.XPATH, '//*[@id="app"]/div/div[2]/div[2]'))
         )
-        assert providers_container.is_displayed(), "El contenedor de proveedores no es visible"
-        print("✓ Contenedor de proveedores encontrado")
+        assert tools_container.is_displayed(), "El contenedor de herramientas no es visible"
+        print("✓ Contenedor de herramientas encontrado")
     except:
-        providers_container = wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".items-container-PROV, .table-container-PROV, table"))
+        tools_container = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".items-container-TOOLS, .table-container-TOOLS, table"))
         )
         print("✓ Contenedor encontrado (selector alternativo)")
-    
-    # Verificar tabla de proveedores
+
+    # Verificar tabla de herramientas
     try:
-        providers_table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".table-PROV, table")))
-        print("✓ Tabla de proveedores encontrada")
+        tools_table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".table-TOOLS, table")))
+        print("✓ Tabla de herramientas encontrada")
     except:
-        providers_table = providers_container.find_element(By.CSS_SELECTOR, "table")
-    
+        tools_table = tools_container.find_element(By.CSS_SELECTOR, "table")
+
     # Verificar encabezados
     try:
-        table_headers = providers_table.find_elements(By.CSS_SELECTOR, "thead th")
-        expected_headers = ["Nro", "Nombre", "Dirección", "Teléfono", "Acciones"]
+        table_headers = tools_table.find_elements(By.CSS_SELECTOR, "thead th")
+        expected_headers = ["Nro", "Nombre", "Descripción", "Estado", "Acciones"]
         found_headers = [header.text.strip() for header in table_headers]
         headers_found = sum(1 for expected in expected_headers 
                           if any(expected.lower() in found.lower() for found in found_headers))
@@ -260,10 +181,10 @@ def test_lista_proveedores_carga_correctamente(driver):
         print(f"✓ Encabezados validados: {headers_found}/{len(expected_headers)}")
     except Exception as e:
         print(f"⚠ Advertencia al verificar encabezados: {e}")
-    
+
     # Verificar filas
     try:
-        table_rows = providers_table.find_elements(By.CSS_SELECTOR, "tbody tr")
+        table_rows = tools_table.find_elements(By.CSS_SELECTOR, "tbody tr")
         print(f"✓ Filas encontradas: {len(table_rows)}")
         if len(table_rows) > 0:
             for i, row in enumerate(table_rows[:3]):
@@ -271,14 +192,11 @@ def test_lista_proveedores_carga_correctamente(driver):
                 assert len(cells) >= 4, f"Fila {i+1} no tiene suficientes celdas"
     except Exception as e:
         print(f"⚠ Advertencia al verificar filas: {e}")
-    
+
     # Verificar título
     try:
-        page_title = driver.find_element(By.CSS_SELECTOR, "h1, .header-PROV h1")
-        assert "proveedor" in page_title.text.strip().lower(), "Título no contiene 'proveedor'"
+        page_title = driver.find_element(By.CSS_SELECTOR, "h1, .header-TOOLS h1")
+        assert "herramienta" in page_title.text.strip().lower(), "Título no contiene 'herramienta'"
         print(f"✓ Título verificado: {page_title.text.strip()}")
     except:
         print("⚠ No se pudo verificar el título")
-    
-    print("\n✅ Todas las validaciones pasaron correctamente")
-    print("✅ La lista de proveedores se cargó correctamente")

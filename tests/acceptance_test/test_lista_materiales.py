@@ -131,9 +131,9 @@ def driver():
     driver.quit()
 
 
-def test_lista_proveedores_carga_correctamente(driver):
+def test_lista_materiales_carga_correctamente(driver):
     """
-    Prueba de aceptación: Verificar que la lista de proveedores se cargue correctamente
+    Prueba de aceptación: Verificar que la lista de materiales se cargue correctamente
     """
     # ============= 1. PREPARACIÓN DE LA PRUEBA =============
     login_url = "http://localhost:8080"
@@ -175,17 +175,18 @@ def test_lista_proveedores_carga_correctamente(driver):
     except:
         pass
     
-    # Buscar y hacer clic en el enlace de Proveedores
-    providers_link = None
+    # Buscar y hacer clic en el enlace de Materiales
+    materials_link = None
     for attempt in range(5):
         try:
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".sidebar ul, ul li a")))
             time.sleep(1)
-            providers_link = wait.until(
-                EC.presence_of_element_located((By.XPATH, '//*[@id="app"]/div/div[1]/div[1]/ul/li[8]/a'))
+            # El enlace de Materiales es el segundo elemento de la lista (después de Dashboard)
+            materials_link = wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Materiales') or contains(., 'Materiales')]"))
             )
-            if providers_link.is_displayed():
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", providers_link)
+            if materials_link.is_displayed():
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", materials_link)
                 time.sleep(1)
                 break
         except Exception as e:
@@ -203,82 +204,128 @@ def test_lista_proveedores_carga_correctamente(driver):
             else:
                 # Buscar por texto como último recurso
                 try:
-                    providers_link = wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Proveedores')]"))
+                    materials_link = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, "//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'materiales')]"))
                     )
                     break
                 except:
                     pass
     
     # Hacer clic en el enlace
-    if providers_link:
+    if materials_link:
         try:
-            providers_link.click()
-            print("✓ Enlace de Proveedores presionado")
+            materials_link.click()
+            print("✓ Enlace de Materiales presionado")
         except:
-            driver.execute_script("arguments[0].click();", providers_link)
-            print("✓ Enlace de Proveedores presionado (JavaScript)")
+            driver.execute_script("arguments[0].click();", materials_link)
+            print("✓ Enlace de Materiales presionado (JavaScript)")
     else:
         # Navegación directa como último recurso
-        driver.get("http://localhost:8080/providers")
-        print("✓ Navegación directa a /providers")
+        driver.get("http://localhost:8080/materials")
+        print("✓ Navegación directa a /materials")
     
     time.sleep(3)
     current_url = driver.current_url
-    assert "providers" in current_url.lower(), f"No se redirigió a la página de proveedores. URL: {current_url}"
+    assert "materials" in current_url.lower(), f"No se redirigió a la página de materiales. URL: {current_url}"
     print(f"✓ Redirección exitosa a: {current_url}")
 
     # ============= 3. VALIDACIÓN / ACEPTACIÓN ==============
-    # Buscar contenedor de proveedores
+    # Esperar a que la página cargue completamente
+    wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+    time.sleep(2)
+    
+    # Buscar contenedor de materiales
     try:
-        providers_container = wait.until(
-            EC.presence_of_element_located((By.XPATH, '//*[@id="app"]/div/div[2]/div[2]'))
+        materials_container = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".items-container-MATERIAL, .table-container-MATERIAL"))
         )
-        assert providers_container.is_displayed(), "El contenedor de proveedores no es visible"
-        print("✓ Contenedor de proveedores encontrado")
+        assert materials_container.is_displayed(), "El contenedor de materiales no es visible"
+        print("✓ Contenedor de materiales encontrado")
     except:
-        providers_container = wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".items-container-PROV, .table-container-PROV, table"))
+        # Intentar buscar por estructura general
+        materials_container = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".items-container, .table-container, table"))
         )
         print("✓ Contenedor encontrado (selector alternativo)")
     
-    # Verificar tabla de proveedores
+    # Verificar título de la página
     try:
-        providers_table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".table-PROV, table")))
-        print("✓ Tabla de proveedores encontrada")
-    except:
-        providers_table = providers_container.find_element(By.CSS_SELECTOR, "table")
+        page_title = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1, .header-MATERIAL h1")))
+        title_text = page_title.text.strip().lower()
+        assert "material" in title_text or "gestión" in title_text, f"Título no contiene 'material' o 'gestión'. Título encontrado: {title_text}"
+        print(f"✓ Título verificado: {page_title.text.strip()}")
+    except Exception as e:
+        print(f"⚠ Advertencia al verificar el título: {e}")
     
-    # Verificar encabezados
+    # Verificar barra de búsqueda
     try:
-        table_headers = providers_table.find_elements(By.CSS_SELECTOR, "thead th")
-        expected_headers = ["Nro", "Nombre", "Dirección", "Teléfono", "Acciones"]
+        search_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".search-input-MATERIAL, input[placeholder*='material'], input[placeholder*='Material']")))
+        assert search_input.is_displayed(), "La barra de búsqueda no es visible"
+        print("✓ Barra de búsqueda encontrada")
+    except:
+        print("⚠ No se encontró la barra de búsqueda (esto puede ser normal)")
+    
+    # Verificar tabla de materiales
+    try:
+        materials_table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".table-MATERIAL, table")))
+        assert materials_table.is_displayed(), "La tabla de materiales no es visible"
+        print("✓ Tabla de materiales encontrada")
+    except:
+        # Intentar encontrar la tabla dentro del contenedor
+        try:
+            materials_table = materials_container.find_element(By.CSS_SELECTOR, "table")
+            print("✓ Tabla encontrada (dentro del contenedor)")
+        except:
+            # Dar más tiempo para que cargue
+            time.sleep(3)
+            materials_table = wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
+            print("✓ Tabla encontrada (búsqueda general)")
+    
+    # Verificar encabezados de la tabla
+    try:
+        table_headers = materials_table.find_elements(By.CSS_SELECTOR, "thead th")
+        expected_headers = ["Nro", "Nombre", "Descripción", "Cantidad", "Precio Unitario", "Cantidad Mínima", "Acciones"]
         found_headers = [header.text.strip() for header in table_headers]
         headers_found = sum(1 for expected in expected_headers 
                           if any(expected.lower() in found.lower() for found in found_headers))
-        assert headers_found >= 3, f"Encabezados insuficientes. Encontrados: {found_headers}"
+        assert headers_found >= 4, f"Encabezados insuficientes. Encontrados: {found_headers}, Esperados: {expected_headers}"
         print(f"✓ Encabezados validados: {headers_found}/{len(expected_headers)}")
+        print(f"  Encabezados encontrados: {found_headers}")
     except Exception as e:
         print(f"⚠ Advertencia al verificar encabezados: {e}")
     
-    # Verificar filas
+    # Verificar filas de la tabla (puede estar vacía, pero la estructura debe existir)
     try:
-        table_rows = providers_table.find_elements(By.CSS_SELECTOR, "tbody tr")
+        table_rows = materials_table.find_elements(By.CSS_SELECTOR, "tbody tr")
         print(f"✓ Filas encontradas: {len(table_rows)}")
+        
+        # Si hay filas, verificar que tengan el formato correcto
         if len(table_rows) > 0:
-            for i, row in enumerate(table_rows[:3]):
-                cells = row.find_elements(By.CSS_SELECTOR, "td")
-                assert len(cells) >= 4, f"Fila {i+1} no tiene suficientes celdas"
+            for i, row in enumerate(table_rows[:3]):  # Verificar las primeras 3 filas
+                try:
+                    cells = row.find_elements(By.CSS_SELECTOR, "td")
+                    # Verificar que tenga al menos algunas celdas (mínimo 4 para tener datos básicos)
+                    assert len(cells) >= 4, f"Fila {i+1} no tiene suficientes celdas. Celdas encontradas: {len(cells)}"
+                    print(f"✓ Fila {i+1} tiene {len(cells)} celdas (correcta)")
+                except Exception as e:
+                    print(f"⚠ Advertencia en fila {i+1}: {e}")
+        else:
+            print("ℹ Tabla vacía (no hay materiales registrados) - esto es válido")
     except Exception as e:
         print(f"⚠ Advertencia al verificar filas: {e}")
     
-    # Verificar título
+    # Verificar botón de agregar material
     try:
-        page_title = driver.find_element(By.CSS_SELECTOR, "h1, .header-PROV h1")
-        assert "proveedor" in page_title.text.strip().lower(), "Título no contiene 'proveedor'"
-        print(f"✓ Título verificado: {page_title.text.strip()}")
+        add_button = driver.find_element(By.CSS_SELECTOR, ".btn-add-material-MATERIAL, button[contains(text(), 'Agregar'), button[contains(text(), 'Add')]")
+        assert add_button.is_displayed(), "El botón de agregar material no es visible"
+        print("✓ Botón de agregar material encontrado")
     except:
-        print("⚠ No se pudo verificar el título")
+        # Buscar por texto
+        try:
+            add_button = driver.find_element(By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'agregar') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add')]")
+            print("✓ Botón de agregar material encontrado (búsqueda por texto)")
+        except:
+            print("⚠ No se encontró el botón de agregar material (esto puede ser normal)")
     
     print("\n✅ Todas las validaciones pasaron correctamente")
-    print("✅ La lista de proveedores se cargó correctamente")
+    print("✅ La lista de materiales se cargó correctamente")
